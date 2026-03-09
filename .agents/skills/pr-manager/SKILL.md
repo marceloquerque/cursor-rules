@@ -23,7 +23,7 @@ Run this workflow when the user asks to create or open a PR.
    - Run `GIT_EDITOR=true git branch --show-current` to get the current branch.
    - Determine the repo default branch with `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`.
    - If that call fails, fall back to `main`, then `master`.
-   - If the current branch is the default branch, stop and explain that a PR cannot be created from the default branch.
+   - If the current branch is the default branch, create or switch to a feature branch before continuing so the PR is never opened from `main` or `master`.
 2. Handle local changes.
    - If unstaged or staged tracked changes exist, commit only the relevant files before creating the PR.
    - Keep commit scope focused. Do not commit unrelated files.
@@ -49,7 +49,7 @@ Run this workflow when the user asks to create or open a PR.
      - `## Test plan` as a checklist
    - Keep the TL;DR to no more than 2 sentences.
 7. Push and create the PR.
-   - Immediately before the push, record a UTC timestamp such as `push_started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")`.
+   - Immediately before the push, record both `review_cycle_started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")` and `current_review_commit=$(git rev-parse HEAD)`.
    - Push with `GIT_EDITOR=true git push -u origin HEAD` when needed.
    - Create the PR with `gh pr create` and a heredoc body.
    - Always return the PR URL.
@@ -60,33 +60,37 @@ After creating a PR, continue automatically without asking the user.
 
 - Run the wait, polling, and follow-up comment pull in the primary thread.
 - Do not move `sleep`, check polling, or the follow-up comment workflow into a background terminal, detached process, or subagent.
-- After the push completes, wait `sleep 30` in the primary thread before fetching follow-up review comments so automated reviewers have a chance to post.
-- When this workflow is running immediately after a push, only report comments and reviews created after `push_started_at`.
+- Treat `current_review_commit` as the primary marker for the active review cycle.
+- Treat `review_cycle_started_at` as a fallback marker for reviews or issue comments that do not include commit metadata.
+- After the push completes, wait `sleep 30` in the primary thread before starting the post-push review cycle.
+- Use the same post-push review cycle for `create pr` and for any standalone review check that performs a push.
 
-1. Wait 5 minutes for CI to start.
+1. Wait 5 minutes for CI and automated reviewers to start.
    - Use `sleep 300` directly in the primary thread.
 2. Poll checks every 30 seconds.
    - Run `gh pr checks <PR_NUMBER> --json name,state,startedAt,completedAt,link`.
-   - Treat a check as done when `state` is not `PENDING`, `IN_PROGRESS`, or `QUEUED`.
+   - Treat a check as done only when `completedAt` is a real completion timestamp, not an empty value and not `0001-01-01T00:00:00Z`.
    - Keep polling every 30 seconds until all checks are done.
    - Show a brief status update each cycle such as `3/5 checks done, waiting...`.
    - Stop after 40 cycles (20 minutes) and report any checks still pending.
-3. Report check results.
-   - List each check name and final state.
-   - Call out any non-success state clearly.
+3. Use the check results only to decide whether to keep waiting or proceed.
+   - Do not add a separate checks section to the pull-comments response unless the user explicitly asks for check results.
 4. Run the full pull-comments workflow against the created PR.
-   - If there are no review comments yet, say `No review comments yet` and stop.
+   - Follow the pull-comments output rules exactly, including the fallback to older comments when the current review cycle is empty.
 
 ## Pull Comments Workflow
 
-Run this workflow when the user asks to pull comments, check for new comments, or review an existing PR discussion.
+Run this workflow when the user asks to pull comments, check for new comments, check PR status, or review an existing PR discussion.
 
 1. Determine the PR.
    - Use an explicit PR URL or PR number when the user provides one.
    - Otherwise infer PR context from current branch tracking or recent `gh pr` activity.
    - If the PR still cannot be determined, ask: `Which PR? (URL, number, or "current" for this branch)`
-   - If this workflow is running immediately after a push and `push_started_at` is known, treat that timestamp as the lower bound for "new comments".
-2. Fetch all comment sources with `gh`.
+2. Check whether a new review cycle should start before fetching comments.
+   - If the branch is ahead of its upstream with committed changes, record `review_cycle_started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")` and `current_review_commit=$(git rev-parse HEAD)`, push those committed changes, wait `sleep 30`, and then run the same wait/poll/check cycle used by `create pr`.
+   - If there are only unstaged changes, ignore them for review checking, set `current_review_commit=$(git rev-parse HEAD)`, and continue against the currently pushed `HEAD`.
+   - If nothing needs to be pushed, set `current_review_commit=$(git rev-parse HEAD)` and continue immediately against the currently pushed `HEAD`.
+3. Fetch all comment sources with `gh`.
 
 ```bash
 gh pr view <PR> --json reviews,comments,url,title,author --jq '.'
@@ -94,18 +98,21 @@ gh api repos/{owner}/{repo}/pulls/{number}/comments --paginate
 gh api repos/{owner}/{repo}/issues/{number}/comments --paginate
 ```
 
-3. Filter to the requested time window.
-   - When checking for new comments after a push, keep only reviews, review comments, and issue comments with `createdAt`, `submittedAt`, or `created_at` later than `push_started_at`.
-   - When no timestamp filter is active, keep the full result set.
-4. Process and organize the fetched data.
+4. Select the comment set to summarize.
+   - Build `currentCycleComments` first.
+   - Prefer comments tied to `current_review_commit` when the API exposes commit metadata such as `commit.oid`, `commit_id`, or `original_commit_id`.
+   - For review summaries or issue comments without commit metadata, use `review_cycle_started_at` as the fallback lower bound.
+   - If `currentCycleComments` is empty but older PR comments still exist, fall back to those older comments instead of saying `No new review comments yet`.
+   - Only say `No new review comments yet` when there are no current-cycle comments and no older comments worth surfacing.
+5. Process and organize the fetched data.
    - Group comments by reviewer login.
    - Deduplicate duplicate or near-duplicate comments.
    - Collapse comment threads into a single item with enough context to understand the issue.
-5. Categorize severity from the reviewer tone and content.
+6. Categorize severity from the reviewer tone and content.
    - `Critical`: required changes, bugs, security problems, or anything that prevents merge.
    - `Should Fix`: recommended changes, style issues, cleaner approaches, or repeated requests.
    - `Suggestions`: optional ideas, nits, questions, or minor improvements.
-6. Explain each comment for non-technical readers.
+7. Explain each comment for non-technical readers.
    - Start with a single plain-language summary paragraph that combines the reviewer request and the practical meaning.
    - `Why it matters`: explain the impact in simple everyday language for a non-technical person and avoid jargon.
    - `How to fix`: explain the likely fix in simple everyday language when the fix is obvious.
@@ -149,7 +156,7 @@ PR #123 - {title}
 
 ## Edge Cases
 
-- If the PR has no review comments in the active time window, say `No new review comments yet`.
-- If the user explicitly asks for all comments instead of new ones, ignore `push_started_at` and summarize the full discussion.
+- If the current review cycle has no comments but older PR comments still exist, summarize the older comments.
+- If the user explicitly asks for all comments instead of the current review cycle, skip the review-cycle selection step and summarize the full discussion.
 - If comment threads are very long, summarize the thread into one item and keep only the essential context.
 - If the GitHub API fails, show the error and suggest checking `gh auth status`.
