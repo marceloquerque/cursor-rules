@@ -2,24 +2,6 @@
 
 A small public repo of reusable agent skills, packaged for installation with [`npx skills`](https://skills.sh/).
 
-## Structure
-
-```text
-skills/
-├── code-auditor/
-│   ├── SKILL.md
-│   └── agents/
-│       └── openai.yaml
-├── conductor-json/
-│   ├── SKILL.md
-│   └── agents/
-│       └── openai.yaml
-└── pr-manager/
-    ├── SKILL.md
-    └── agents/
-        └── openai.yaml
-```
-
 ## Included Skills
 
 - `code-auditor` - Audit codebases for duplicate code, dead code, dependency bloat, and refactoring opportunities.
