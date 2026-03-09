@@ -1,6 +1,6 @@
 # Cursor Rules
 
-A collection of rules, agents, commands, and skills for [Cursor](https://cursor.com) that I use in my workflows.
+A collection of rules, agents, and skills for [Cursor](https://cursor.com) that I use in my workflows.
 
 ## Structure
 
@@ -28,9 +28,10 @@ A collection of rules, agents, commands, and skills for [Cursor](https://cursor.
 
 - **code-auditor** — Expert code auditor that finds duplicate code, unused code, DRY violations, technical debt, and unused dependencies. Ideal after major feature work or before refactoring.
 
-### Commands
+### PR Workflows
 
-The PR workflows now live in `.agents/skills/pr-manager` instead of `.cursor/commands/*`.
+The PR workflows now live in `.agents/skills/pr-manager`.
+The old `.cursor/commands/*` path is no longer used in this repo.
 
 ### Rules
 
@@ -52,6 +53,8 @@ The PR workflows now live in `.agents/skills/pr-manager` instead of `.cursor/com
 
 ### Manual Install
 
-Copy the `.cursor/` and `.agents/` directories into your project root. Cursor will automatically pick up rules and agents from `.cursor/`, and the `pr-manager` skill from `.agents/skills/`.
+Copy the `.cursor/` and `.agents/` directories into your project root.
+Cursor will automatically pick up rules and agents from `.cursor/`, and the `pr-manager` skill from `.agents/skills/`.
+If you only copy `.cursor/`, you will not get the PR workflow.
 
 Good luck!
