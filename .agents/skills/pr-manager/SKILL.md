@@ -113,9 +113,12 @@ gh api repos/{owner}/{repo}/issues/{number}/comments --paginate
    - If `currentCycleComments` is empty but older PR comments still exist, fall back to those older comments instead of saying `No new review comments yet`.
    - Only say `No new review comments yet` when there are no current-cycle comments and no older comments worth surfacing.
 5. Process and organize the fetched data.
+   - Filter out comments and threads whose latest state clearly shows they are already addressed, resolved, fixed, or superseded.
+   - Prefer unresolved inline comments over generic review-summary comments when both refer to the same issue.
    - Group comments by reviewer login.
    - Deduplicate duplicate or near-duplicate comments.
    - Collapse comment threads into a single item with enough context to understand the issue.
+   - If no actionable comments remain after filtering, use the output-format empty states instead of resurfacing already fixed comments.
 6. Categorize severity from the reviewer tone and content.
    - `Critical`: required changes, bugs, security problems, or anything that prevents merge.
    - `Should Fix`: recommended changes, style issues, cleaner approaches, or repeated requests.
