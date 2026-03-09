@@ -72,6 +72,9 @@ After creating a PR, continue automatically without asking the user.
    - Treat a check as done only when `completedAt` is a real completion timestamp, not an empty value and not `0001-01-01T00:00:00Z`.
    - Keep polling every 30 seconds until all checks are done.
    - Show a brief status update each cycle such as `3/5 checks done, waiting...`.
+   - If implementing the polling loop in shell, do not use a non-zero exit status to mean `still waiting`; some shells in agent environments stop immediately on any non-zero exit.
+   - Use explicit loop control instead: print the progress, `break` when all checks are done, otherwise `sleep 30` and continue polling.
+   - Reserve non-zero exits for real failures such as `gh` returning an error.
    - Stop after 40 cycles (20 minutes) and report any checks still pending.
 3. Use the check results only to decide whether to keep waiting or proceed.
    - Do not add a separate checks section to the pull-comments response unless the user explicitly asks for check results.
@@ -87,9 +90,13 @@ Run this workflow when the user asks to pull comments, check for new comments, c
    - Otherwise infer PR context from current branch tracking or recent `gh pr` activity.
    - If the PR still cannot be determined, ask: `Which PR? (URL, number, or "current" for this branch)`
 2. Check whether a new review cycle should start before fetching comments.
-   - If the branch is ahead of its upstream with committed changes, record `review_cycle_started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")` and `current_review_commit=$(git rev-parse HEAD)`, push those committed changes, wait `sleep 30`, and then run the same wait/poll/check cycle used by `create pr`.
+   - If this workflow is running immediately after `create pr` or another user-requested push, reuse that pushed commit as the active review cycle and continue with the same wait/poll/check flow.
+   - If the branch is ahead of its upstream with committed changes during a standalone `pull comments`, `check PR status`, or similar read/check request, ask for confirmation before pushing anything.
+   - If the user approves the push, record `review_cycle_started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")` and `current_review_commit=$(git rev-parse HEAD)`, push those committed changes, wait `sleep 30`, and then run the same wait/poll/check cycle used by `create pr`.
+   - If the user does not approve the push, do not push. Set `current_review_commit=$(git rev-parse @{upstream})` and continue against the currently pushed `HEAD`, making it clear that unpushed local commits are excluded from the review cycle.
    - If there are only unstaged changes, ignore them for review checking, set `current_review_commit=$(git rev-parse HEAD)`, and continue against the currently pushed `HEAD`.
    - If nothing needs to be pushed, set `current_review_commit=$(git rev-parse HEAD)` and continue immediately against the currently pushed `HEAD`.
+   - Treat `review_cycle_started_at` as optional unless a push in the active review cycle actually set it.
 3. Fetch all comment sources with `gh`.
 
 ```bash
@@ -101,7 +108,8 @@ gh api repos/{owner}/{repo}/issues/{number}/comments --paginate
 4. Select the comment set to summarize.
    - Build `currentCycleComments` first.
    - Prefer comments tied to `current_review_commit` when the API exposes commit metadata such as `commit.oid`, `commit_id`, or `original_commit_id`.
-   - For review summaries or issue comments without commit metadata, use `review_cycle_started_at` as the fallback lower bound.
+   - For review summaries or issue comments without commit metadata, use `review_cycle_started_at` as the fallback lower bound only when it is known for the active review cycle.
+   - If `review_cycle_started_at` is unknown, do not treat it as a required filter; prefer commit-linked comments first, then fall back to older PR comments instead of excluding comments on a missing timestamp filter.
    - If `currentCycleComments` is empty but older PR comments still exist, fall back to those older comments instead of saying `No new review comments yet`.
    - Only say `No new review comments yet` when there are no current-cycle comments and no older comments worth surfacing.
 5. Process and organize the fetched data.
@@ -129,6 +137,8 @@ Limit the response to exactly:
 - `### Suggestions`
 
 Do not include reviewer counts, comment counts, check results, quick-reference tables, summaries, metadata headers, or any extra sections before or after those categories.
+
+If none are available for a category (e.g., 0 suggestions) show an empty state like `No suggestions found.` under `### Suggestions`.
 
 ```markdown
 PR #123 - {title}
