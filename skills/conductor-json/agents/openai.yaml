@@ -1,0 +1,6 @@
+interface:
+  display_name: "Conductor JSON"
+  short_description: "Generate Conductor workspace configs"
+  default_prompt: "Use $conductor-json to generate a conductor.json for this workspace."
+policy:
+  allow_implicit_invocation: true
