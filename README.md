@@ -5,12 +5,12 @@ A collection of rules, agents, commands, and skills for [Cursor](https://cursor.
 ## Structure
 
 ```
+.agents/
+└── skills/
+    └── pr-manager/              # Create PRs and pull review comments
 .cursor/
 ├── agents/
 │   └── code-auditor.md          # Codebase analysis & refactoring specialist
-├── commands/
-│   ├── create-pr.md             # Open a PR with auto-generated description
-│   └── pull-comments.md         # Fetch & organize PR review comments
 ├── rules/
 │   ├── convex_rules.mdc
 │   ├── decision-making.mdc
@@ -30,8 +30,7 @@ A collection of rules, agents, commands, and skills for [Cursor](https://cursor.
 
 ### Commands
 
-- **pull-comments** — Fetches all review comments from a GitHub PR, dedupes them, categorizes by severity (blocking / should fix / suggestions), and explains each in plain English.
-- **create-pr** — Creates a PR from your current branch with a structured description, auto-committing any unstaged work first.
+The PR workflows now live in `.agents/skills/pr-manager` instead of `.cursor/commands/*`.
 
 ### Rules
 
@@ -46,12 +45,13 @@ A collection of rules, agents, commands, and skills for [Cursor](https://cursor.
 
 ### Skills
 
+- **pr-manager** — Creates PRs from the current branch, waits for checks, and fetches and organizes PR review comments.
 - **conductor-json** — Generates `conductor.json` files for Conductor workspaces, with templates for Tauri, Next.js, and React projects.
 
 ## Usage
 
 ### Manual Install
 
-Copy the `.cursor/` directory into your project root. Cursor will automatically pick up rules, agents, commands, and skills from this location.
+Copy the `.cursor/` and `.agents/` directories into your project root. Cursor will automatically pick up rules and agents from `.cursor/`, and the `pr-manager` skill from `.agents/skills/`.
 
 Good luck!

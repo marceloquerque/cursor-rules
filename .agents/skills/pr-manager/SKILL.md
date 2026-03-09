@@ -57,17 +57,20 @@ Run this workflow when the user asks to create or open a PR.
 
 After creating a PR, continue automatically without asking the user.
 
+- Run the wait, polling, and follow-up comment pull in the primary thread.
+- Do not move `sleep`, check polling, or the follow-up comment workflow into a background terminal, detached process, or subagent.
+
 1. Wait 5 minutes for CI to start.
-   - Use `sleep 300` in a backgrounded shell, then check back.
+   - Use `sleep 300` directly in the primary thread.
 2. Poll checks every 30 seconds.
-   - Run `gh pr checks <PR_NUMBER> --json name,state,status,conclusion`.
-   - Treat a check as done when `status` is `completed`.
+   - Run `gh pr checks <PR_NUMBER> --json name,state,startedAt,completedAt,link`.
+   - Treat a check as done when `state` is not `PENDING`, `IN_PROGRESS`, or `QUEUED`.
    - Keep polling every 30 seconds until all checks are done.
    - Show a brief status update each cycle such as `3/5 checks done, waiting...`.
    - Stop after 40 cycles (20 minutes) and report any checks still pending.
 3. Report check results.
-   - List each check name and conclusion.
-   - Call out failed checks clearly.
+   - List each check name and final state.
+   - Call out any non-success state clearly.
 4. Run the full pull-comments workflow against the created PR.
    - If there are no review comments yet, say `No review comments yet` and stop.
 
@@ -92,13 +95,13 @@ gh api repos/{owner}/{repo}/issues/{number}/comments --paginate
    - Deduplicate duplicate or near-duplicate comments.
    - Collapse comment threads into a single item with enough context to understand the issue.
 4. Categorize severity from the reviewer tone and content.
-   - `Blocking`: required changes, bugs, security problems, or anything that prevents merge.
+   - `Critical`: required changes, bugs, security problems, or anything that prevents merge.
    - `Should Fix`: recommended changes, style issues, cleaner approaches, or repeated requests.
    - `Suggestions`: optional ideas, nits, questions, or minor improvements.
 5. Explain each comment for non-technical readers.
-   - `Plain English`: explain what the reviewer is asking for in simple everyday language for a non-technical person and avoid jargon.
+   - Start with a single plain-language summary paragraph that combines the reviewer request and the practical meaning.
    - `Why it matters`: explain the impact in simple everyday language for a non-technical person and avoid jargon.
-   - `Quick fix`: explain the likely fix in simple everyday language when the fix is obvious.
+   - `How to fix`: explain the likely fix in simple everyday language when the fix is obvious.
    - If a technical term is unavoidable, translate it immediately into plain language.
 
 ## Output Format
@@ -111,25 +114,24 @@ By @{author} | {n} reviewers | {total} comments
 
 ---
 
-### Blocking ({count})
+### Critical ({count})
 
-**#C1** · @reviewer1 · `src/file.tsx:42`
-{short summary of the reviewer comment}
+🔴 **#C1** · @reviewer1 · `src/file.tsx:42`
+{single plain-language summary of the reviewer comment and what it means in practice}
 
-**Plain English**: {simple explanation for a non-technical person}
 **Why it matters**: {simple impact explanation for a non-technical person}
-**Quick fix**: {simple likely fix when obvious}
+**How to fix**: {simple likely fix when obvious}
 
 ---
 
 ### Should Fix ({count})
 
-**#C2** · @reviewer2 · `src/api.ts:88`
+🟠 **#C2** · @reviewer2 · `src/api.ts:88`
 ...
 
 ### Suggestions ({count})
 
-**#C3** · @reviewer3 · `src/index.ts:5`
+🟡 **#C3** · @reviewer3 · `src/index.ts:5`
 ...
 
 ---
@@ -137,12 +139,12 @@ By @{author} | {n} reviewers | {total} comments
 ## Quick Reference
 | # | File | Reviewer | Severity |
 |---|------|----------|----------|
-| C1 | src/file.tsx:42 | @reviewer1 | Blocking |
-| C2 | src/api.ts:88 | @reviewer2 | Should Fix |
-| C3 | src/index.ts:5 | @reviewer3 | Suggestions |
+| C1 | src/file.tsx:42 | @reviewer1 | 🔴 Critical |
+| C2 | src/api.ts:88 | @reviewer2 | 🟠 Should Fix |
+| C3 | src/index.ts:5 | @reviewer3 | 🟡 Suggestions |
 
 ## Summary
-- {blocking} blocking issues to resolve
+- {critical} critical issues to resolve
 - {should_fix} recommended changes
 - {suggestions} optional improvements
 - Top concerns: {1-2 sentence plain-language summary of the main themes}
